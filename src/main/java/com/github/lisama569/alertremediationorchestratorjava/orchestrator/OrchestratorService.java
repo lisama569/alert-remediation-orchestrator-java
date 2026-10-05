@@ -2,6 +2,7 @@ package com.github.lisama569.alertremediationorchestratorjava.orchestrator;
 
 import com.github.lisama569.alertremediationorchestratorjava.domain.AlertEvent;
 import com.github.lisama569.alertremediationorchestratorjava.domain.EventStatus;
+import com.github.lisama569.alertremediationorchestratorjava.domain.IngestResult;
 import com.github.lisama569.alertremediationorchestratorjava.domain.RejectionReason;
 import com.github.lisama569.alertremediationorchestratorjava.execution.RemediationAction;
 import com.github.lisama569.alertremediationorchestratorjava.policy.MaintenanceWindow;
@@ -16,6 +17,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 编排门控：维护窗口延迟、冻结期拒绝、高风险审批，全部判定写入事件历史。
+ * 自动驱动：ingestAndDrive 让告警接入后无需手动触发即走到处置结论；
+ * enableAutoResume 后，时钟推进过维护窗口结束点时延迟事件自动恢复，无需手动唤醒。
  */
 public class OrchestratorService {
 
@@ -26,6 +29,10 @@ public class OrchestratorService {
     private final RemediationExecutor executor;
     private final MutableClock clock;
     private final List<MaintenanceWindow> windows = new CopyOnWriteArrayList<>();
+    /** 自动驱动与延迟自愈使用的默认动作工厂 */
+    private volatile java.util.function.Function<String, RemediationAction> defaultActionFactory =
+            key -> (k, attempt) -> com.github.lisama569.alertremediationorchestratorjava.execution.ExecutionResult
+                    .ok("default no-op remediation");
 
     public OrchestratorService(EventService eventService, ApprovalService approvalService,
                                RemediationExecutor executor, MutableClock clock) {
@@ -38,6 +45,49 @@ public class OrchestratorService {
     public void setWindows(List<MaintenanceWindow> newWindows) {
         windows.clear();
         windows.addAll(newWindows);
+    }
+
+    /** 设置自动驱动 / 延迟自愈使用的默认动作工厂。 */
+    public void setDefaultActionFactory(
+            java.util.function.Function<String, RemediationAction> factory) {
+        this.defaultActionFactory = factory;
+    }
+
+    /**
+     * 告警接入并自动驱动到处置结论，无需手动触发。
+     * 接入未受理（抑制 / 终态 / 暂未匹配策略）时不触发处置，remediation 为 null；
+     * 重复 / 并发投递由执行器去重，只会真正执行一次，其余得到明确的 DUPLICATE 结果。
+     */
+    public IngestOutcome ingestAndDrive(com.github.lisama569.alertremediationorchestratorjava.domain.Alert alert) {
+        IngestResult ingest = eventService.ingest(alert);
+        if (!ingest.accepted()) {
+            log.info("auto-drive skipped: eventKey={} ingest rejected reason={}",
+                    alert.eventKey(), ingest.rejection());
+            return new IngestOutcome(ingest, null);
+        }
+        RemediationOutcome outcome = remediate(alert.eventKey(),
+                defaultActionFactory.apply(alert.eventKey()));
+        log.info("auto-drive finished: eventKey={} ingest={} remediation={}",
+                alert.eventKey(), ingest.accepted(), outcome.kind());
+        return new IngestOutcome(ingest, outcome);
+    }
+
+    /**
+     * 开启延迟自愈：时钟每次推进后自动检查并恢复窗口已结束的延迟事件，
+     * 无需手动调用 processDelayed。恢复判定与执行均写入事件历史，且只执行一次。
+     */
+    public void enableAutoResume() {
+        clock.addListener(t -> {
+            int resumed = processDelayed();
+            if (resumed > 0) {
+                log.info("auto-resume on clock advance: now={} resumed={}", t, resumed);
+            }
+        });
+    }
+
+    /** 使用默认动作工厂推进延迟事件。 */
+    public int processDelayed() {
+        return processDelayed(defaultActionFactory);
     }
 
     /** 请求对某事件执行处置。 */

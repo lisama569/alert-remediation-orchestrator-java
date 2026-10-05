@@ -93,6 +93,20 @@ public class AlertEvent {
         transition(at, EventStatus.REJECTED, "rejected: " + reason + " - " + detail);
     }
 
+    /**
+     * 记录一次非终态拒绝（如暂时无策略匹配）：原因与依据写入历史，
+     * 但状态保持不变，后续投递在条件满足（如补齐策略）后仍可被受理。
+     */
+    public synchronized void noteTransientRejection(Instant at, RejectionReason reason, String detail) {
+        this.rejection = reason;
+        history.add(new HistoryEntry(at, status, status, "rejected(transient): " + reason + " - " + detail));
+    }
+
+    /** 事件被正式受理后清除此前的非终态拒绝记录。 */
+    public synchronized void clearRejection() {
+        this.rejection = null;
+    }
+
     /** 执行计数 +1（仅在真正开始一次执行时调用，保证不重复计数）。 */
     public synchronized int incrementExecution(Instant at, int attempt) {
         executionCount++;

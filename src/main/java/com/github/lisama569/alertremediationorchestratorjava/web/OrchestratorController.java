@@ -2,10 +2,10 @@ package com.github.lisama569.alertremediationorchestratorjava.web;
 
 import com.github.lisama569.alertremediationorchestratorjava.domain.Alert;
 import com.github.lisama569.alertremediationorchestratorjava.domain.AlertEvent;
-import com.github.lisama569.alertremediationorchestratorjava.domain.IngestResult;
 import com.github.lisama569.alertremediationorchestratorjava.execution.ExecutionResult;
 import com.github.lisama569.alertremediationorchestratorjava.orchestrator.ApprovalService;
 import com.github.lisama569.alertremediationorchestratorjava.orchestrator.EventService;
+import com.github.lisama569.alertremediationorchestratorjava.orchestrator.IngestOutcome;
 import com.github.lisama569.alertremediationorchestratorjava.orchestrator.OrchestratorService;
 import com.github.lisama569.alertremediationorchestratorjava.orchestrator.RemediationOutcome;
 import com.github.lisama569.alertremediationorchestratorjava.policy.MaintenanceWindow;
@@ -57,8 +57,9 @@ public class OrchestratorController {
     }
 
     @PostMapping("/alerts")
-    public IngestResult ingest(@RequestBody AlertRequest req) {
-        return eventService.ingest(new Alert(req.alertId(), req.eventKey(), req.severity(),
+    public IngestOutcome ingest(@RequestBody AlertRequest req) {
+        // 接入即自动驱动到处置结论，无需再手动触发
+        return orchestrator.ingestAndDrive(new Alert(req.alertId(), req.eventKey(), req.severity(),
                 req.source(), req.labels() == null ? Map.of() : req.labels(), clock.now()));
     }
 

@@ -43,6 +43,14 @@ public class OrchestratorConfig {
                                                    ApprovalService approvalService,
                                                    RemediationExecutor executor,
                                                    MutableClock clock) {
-        return new OrchestratorService(eventService, approvalService, executor, clock);
+        OrchestratorService service = new OrchestratorService(eventService, approvalService,
+                executor, clock);
+        // 本地验证默认动作为 no-op 成功；自动驱动与延迟自愈共用
+        service.setDefaultActionFactory(
+                key -> (k, attempt) -> com.github.lisama569.alertremediationorchestratorjava
+                        .execution.ExecutionResult.ok("local no-op remediation"));
+        // 时钟推进过维护窗口结束点时，延迟事件自动恢复，无需手动唤醒
+        service.enableAutoResume();
+        return service;
     }
 }
