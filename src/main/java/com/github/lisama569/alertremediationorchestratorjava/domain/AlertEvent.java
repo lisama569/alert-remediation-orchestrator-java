@@ -93,6 +93,11 @@ public class AlertEvent {
         transition(at, EventStatus.REJECTED, "rejected: " + reason + " - " + detail);
     }
 
+    /** 追加一条不改变状态的判定备注（如未受理投递、终态重复投递），保证每次判定可查。 */
+    public synchronized void recordNote(Instant at, String detail) {
+        history.add(new HistoryEntry(at, status, status, detail));
+    }
+
     /** 执行计数 +1（仅在真正开始一次执行时调用，保证不重复计数）。 */
     public synchronized int incrementExecution(Instant at, int attempt) {
         executionCount++;

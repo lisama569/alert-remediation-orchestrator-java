@@ -1,6 +1,4 @@
-package com.github.lisama569.alertremediationorchestratorjava.orchestrator;
-
-import com.github.lisama569.alertremediationorchestratorjava.domain.RejectionReason;
+package com.github.lisama569.alertremediationorchestratorjava.domain;
 
 /**
  * 一次处置请求的结果：执行 / 延迟 / 拒绝 / 去重，原因可区分。

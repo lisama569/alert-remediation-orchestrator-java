@@ -3,11 +3,11 @@ package com.github.lisama569.alertremediationorchestratorjava.web;
 import com.github.lisama569.alertremediationorchestratorjava.domain.Alert;
 import com.github.lisama569.alertremediationorchestratorjava.domain.AlertEvent;
 import com.github.lisama569.alertremediationorchestratorjava.domain.IngestResult;
-import com.github.lisama569.alertremediationorchestratorjava.execution.ExecutionResult;
+import com.github.lisama569.alertremediationorchestratorjava.domain.RemediationOutcome;
 import com.github.lisama569.alertremediationorchestratorjava.orchestrator.ApprovalService;
 import com.github.lisama569.alertremediationorchestratorjava.orchestrator.EventService;
 import com.github.lisama569.alertremediationorchestratorjava.orchestrator.OrchestratorService;
-import com.github.lisama569.alertremediationorchestratorjava.orchestrator.RemediationOutcome;
+import com.github.lisama569.alertremediationorchestratorjava.domain.RemediationOutcome;
 import com.github.lisama569.alertremediationorchestratorjava.policy.MaintenanceWindow;
 import com.github.lisama569.alertremediationorchestratorjava.policy.RemediationPolicy;
 import com.github.lisama569.alertremediationorchestratorjava.time.MutableClock;
@@ -64,8 +64,8 @@ public class OrchestratorController {
 
     @PostMapping("/events/{eventKey}/remediate")
     public RemediationOutcome remediate(@PathVariable String eventKey) {
-        return orchestrator.remediate(eventKey,
-                (key, attempt) -> ExecutionResult.ok("local no-op remediation"));
+        // 兼容手动入口：自动链路已在接入时驱动，这里使用同一 ActionResolver 与门控
+        return orchestrator.remediateManually(eventKey);
     }
 
     @PostMapping("/events/{eventKey}/approve")
@@ -85,8 +85,8 @@ public class OrchestratorController {
 
     @PostMapping("/delayed/process")
     public int processDelayed() {
-        return orchestrator.processDelayed(
-                key -> (k, attempt) -> ExecutionResult.ok("local no-op remediation"));
+        // 兼容手动入口；时钟推进到窗口结束时延迟事件已自动恢复，通常无需再调用
+        return orchestrator.resumeDueDelayed();
     }
 
     @GetMapping("/events")

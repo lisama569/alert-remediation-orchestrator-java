@@ -1,6 +1,7 @@
 package com.github.lisama569.alertremediationorchestratorjava.orchestrator;
 
 import com.github.lisama569.alertremediationorchestratorjava.domain.Alert;
+import com.github.lisama569.alertremediationorchestratorjava.domain.EventStatus;
 import com.github.lisama569.alertremediationorchestratorjava.domain.IngestResult;
 import com.github.lisama569.alertremediationorchestratorjava.domain.RejectionReason;
 import com.github.lisama569.alertremediationorchestratorjava.policy.RemediationPolicy;
@@ -64,11 +65,32 @@ class EventServiceTest {
     }
 
     @Test
-    void unmatchedPolicyRejectedWithDistinguishableReason() {
+    void unmatchedPolicyRejectedButEventNotPermanentlyPinned() {
         IngestResult r = service.ingest(alert("a1", "evt-3", Map.of("app", "unknown")));
         log.info("input: alert with no matching policy; result={}", r);
         assertFalse(r.accepted());
         assertEquals(RejectionReason.POLICY_MISMATCH, r.rejection());
+        // 不受理不等于终态拒绝：事件保持 NEW，不计数，判定留痕，等规则补齐可继续
+        assertEquals(EventStatus.NEW, service.getEvent("evt-3").getStatus());
+        assertEquals(0, service.getEvent("evt-3").getAlertCount());
+        assertTrue(service.getEvent("evt-3").getHistory().stream()
+                        .anyMatch(h -> h.detail().contains("no policy matched")),
+                "each policy-mismatch decision must be recorded");
+
+        // 规则补齐后，同样的告警再投进来正常受理（此处未接自动驱动钩子，只验证接入语义）
+        service.setPolicies(List.of(
+                new RemediationPolicy("p-web", Map.of("app", "web"), false, false, 2,
+                        Duration.ofSeconds(30)),
+                new RemediationPolicy("p-unknown", Map.of("app", "unknown"), false, false, 1,
+                        Duration.ofSeconds(30))));
+        IngestResult r2 = service.ingest(alert("a2", "evt-3", Map.of("app", "unknown")));
+        log.info("input: same alert redelivered after rule added; result={} status={} snapshot={}",
+                r2, service.getEvent("evt-3").getStatus(),
+                service.getEvent("evt-3").getPolicySnapshot());
+        assertTrue(r2.accepted());
+        assertEquals(IngestResult.Disposition.NEW_ACCEPTED, r2.disposition());
+        assertEquals(1, service.getEvent("evt-3").getAlertCount());
+        assertTrue(service.getEvent("evt-3").getPolicySnapshot().contains("p-unknown"));
     }
 
     @Test
